@@ -99,43 +99,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const die2Value = currentDice[1] || 1;
         const moveInfo = board.getBestMove([die1Value, die2Value]);
         
-        // Get current pip counts
-        const whitePips = parseInt(document.getElementById('whitePips').textContent);
-        const blackPips = parseInt(document.getElementById('blackPips').textContent);
-        const currentPlayer = board.currentPlayer;
-        const playerPips = currentPlayer === 'white' ? whitePips : blackPips;
-        const opponentPips = currentPlayer === 'white' ? blackPips : whitePips;
-        
         // Update modal header with current player
         document.getElementById('pipCounts').textContent = 
-            `Current player: ${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)}`;
+            `Current player: ${board.currentPlayer.charAt(0).toUpperCase() + board.currentPlayer.slice(1)}`;
 
-        // Format aggressive strategy
-        let aggressiveAdvice = `Pip count before: ${playerPips}\n`;
-        if (moveInfo.aggressiveStrategy.moves.length > 0) {
-            let totalPipReduction = moveInfo.aggressiveStrategy.moves.reduce((total, move) => {
-                return total + estimatePipReduction(move, currentPlayer);
-            }, 0);
-            aggressiveAdvice += `Expected pip count after: ${playerPips - totalPipReduction}\n\n`;
-            aggressiveAdvice += moveInfo.aggressiveStrategy.description;
-        } else {
-            aggressiveAdvice += "\nNo aggressive moves available";
-        }
-
-        // Format conservative strategy
-        let conservativeAdvice = `Pip count before: ${playerPips}\n`;
-        if (moveInfo.conservativeStrategy.moves.length > 0) {
-            let totalPipReduction = moveInfo.conservativeStrategy.moves.reduce((total, move) => {
-                return total + estimatePipReduction(move, currentPlayer);
-            }, 0);
-            conservativeAdvice += `Expected pip count after: ${playerPips - totalPipReduction}\n\n`;
-            conservativeAdvice += moveInfo.conservativeStrategy.description;
-        } else {
-            conservativeAdvice += "\nNo conservative moves available";
-        }
-
-        document.getElementById('aggressiveAdvice').textContent = aggressiveAdvice;
-        document.getElementById('conservativeAdvice').textContent = conservativeAdvice;
+        // Display move advice
+        document.getElementById('moveAdvice').textContent = moveInfo;
         
         modal.style.display = 'block';
     });
@@ -155,32 +124,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Execute move button handlers
-    document.getElementById('executeAggressive').addEventListener('click', () => {
-        const die1Value = currentDice[0] || 1;
-        const die2Value = currentDice[1] || 1;
-        const moveInfo = board.getBestMove([die1Value, die2Value]);
-        
-        if (moveInfo.aggressiveStrategy.moves.length > 0) {
-            const validMoves = moveInfo.aggressiveStrategy.moves.filter(move => move !== null);
-            if (validMoves.length > 0) {
-                board.bestMoveSequence = validMoves;
-                board.executeBestMove();
-            }
-        }
-        modal.style.display = 'none';
-    });
-
-    document.getElementById('executeConservative').addEventListener('click', () => {
-        const die1Value = currentDice[0] || 1;
-        const die2Value = currentDice[1] || 1;
-        const moveInfo = board.getBestMove([die1Value, die2Value]);
-        
-        if (moveInfo.conservativeStrategy.moves.length > 0) {
-            const validMoves = moveInfo.conservativeStrategy.moves.filter(move => move !== null);
-            if (validMoves.length > 0) {
-                board.bestMoveSequence = validMoves;
-                board.executeBestMove();
-            }
+    document.getElementById('executeMove').addEventListener('click', () => {
+        if (board.bestMoveSequence && board.bestMoveSequence.length > 0) {
+            board.bestMoveSequence.forEach(move => {
+                if (move.type === 'bar') {
+                    board.moveFromBar(move.to);
+                } else {
+                    board.movePiece(move.from, move.to);
+                }
+            });
+            board.updatePipCounts();
+            board.bestMoveSequence = null;
         }
         modal.style.display = 'none';
     });
@@ -378,15 +332,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getPointNumber(index) {
-        // Convert internal index (0-23) to point number (1-24)
         if (index >= 18) {
-            return 6 - (index - 18);  // Top right: indices 18-23 = points 6-1
+            return 6 - (index - 18);  // Top right: 6,5,4,3,2,1
         } else if (index >= 12) {
-            return 7 + (index - 12);  // Top left: indices 12-17 = points 7-12
+            return 7 + (index - 12);  // Top left: 7,8,9,10,11,12
         } else if (index >= 6) {
-            return 13 + (index - 6);  // Bottom left: indices 6-11 = points 13-18
+            return 13 + (index - 6);  // Bottom left: 13,14,15,16,17,18
         } else {
-            return 19 + index;        // Bottom right: indices 0-5 = points 19-24
+            return 24 - index;        // Bottom right: 24,23,22,21,20,19
         }
     }
 
@@ -541,141 +494,153 @@ document.addEventListener('DOMContentLoaded', () => {
         return newState;
     }
 
-    function findMovesSequence(board, player, dice) {
-        const moves = [];
-        const usedDice = new Set();
-        let currentBoard = {
-            points: board.points.map(p => ({
-                color: p.color,
-                pieces: [...p.pieces]
-            })),
-            bar: {
-                white: [...board.bar.white],
-                black: [...board.bar.black]
+    function findSingleMove(boardState, die) {
+        // Check bar first
+        if (boardState.bar[board.currentPlayer].length > 0) {
+            const targetPoint = board.currentPlayer === 'white' ? 25 - die : die;
+            const targetIndex = board.getTargetPoint(targetPoint, die);
+            
+            if (isLegalMove(boardState, 'bar', targetIndex, board.currentPlayer)) {
+                return {
+                    type: 'bar',
+                    to: targetIndex,
+                    die: die,
+                    description: `Die ${die}: Enter from bar to point ${targetPoint}`
+                };
             }
-        };
+            return null;
+        }
 
-        // Function to find a single move given current board state
-        function findSingleMove(boardState, die) {
-            // Check bar first
-            if (boardState.bar[player].length > 0) {
-                const targetPoint = player === 'white' ? 25 - die : die;
-                const targetIndex = getIndexFromPoint(targetPoint);
+        // Get all points with current player's pieces
+        let possibleMoves = [];
+        boardState.points.forEach((point, fromIndex) => {
+            if (point.color === board.currentPlayer && point.pieces.length > 0) {
+                // Use board's getTargetPoint method to calculate correct target
+                const targetIndex = board.getTargetPoint(fromIndex, die);
                 
                 if (targetIndex >= 0 && targetIndex < 24 && 
-                    (!boardState.points[targetIndex].color || 
-                     boardState.points[targetIndex].color === player ||
-                     boardState.points[targetIndex].pieces.length === 1)) {
-                    return {
-                        type: 'bar',
+                    isLegalMove(boardState, fromIndex, targetIndex, board.currentPlayer)) {
+                    
+                    possibleMoves.push({
+                        type: 'normal',
+                        from: fromIndex,
                         to: targetIndex,
                         die: die,
-                        description: `Die ${die}: Enter from bar to point ${targetPoint}`
+                        description: `Die ${die}: Move from point ${board.pointNames(fromIndex)} to point ${board.pointNames(targetIndex)}`
+                    });
+                }
+            }
+        });
+
+        return possibleMoves.length > 0 ? possibleMoves[0] : null;
+    }
+
+    function findMovesSequence(board, player, dice) {
+        const sequence = [];
+        const boardState = JSON.parse(JSON.stringify(board)); // Deep copy of board state
+        
+        // For doubles, we need to use the die four times
+        const diceToUse = dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice;
+        
+        // Try each die
+        diceToUse.forEach(die => {
+            const move = findSingleMove(boardState, die);
+            if (move) {
+                sequence.push(move);
+                // Update board state
+                if (move.type === 'bar') {
+                    boardState.bar[player]--;
+                    boardState.points[move.to] = {
+                        color: player,
+                        pieces: [...(boardState.points[move.to].pieces || []), player]
+                    };
+                } else {
+                    boardState.points[move.from].pieces.pop();
+                    if (boardState.points[move.from].pieces.length === 0) {
+                        boardState.points[move.from].color = null;
+                    }
+                    boardState.points[move.to] = {
+                        color: player,
+                        pieces: [...(boardState.points[move.to].pieces || []), player]
                     };
                 }
-                return null;
             }
-
-            // Then check regular moves
-            let bestMove = null;
-            boardState.points.forEach((point, i) => {
-                if (point.color === player && point.pieces.length > 0) {
-                    const targetIndex = player === 'white' ? i - die : i + die;
-                    
-                    if (targetIndex >= 0 && targetIndex < 24 && 
-                        (!boardState.points[targetIndex].color || 
-                         boardState.points[targetIndex].color === player ||
-                         boardState.points[targetIndex].pieces.length === 1)) {
-                        
-                        let moveContext = "";
-                        if (player === 'white') {
-                            if (targetIndex <= 5) moveContext = "into home board";
-                            else if (targetIndex <= 11) moveContext = "into outer board";
-                        } else {
-                            if (targetIndex >= 18) moveContext = "into home board";
-                            else if (targetIndex >= 12) moveContext = "into outer board";
-                        }
-
-                        const fromPointNumber = getPointNumber(i);
-                        const toPointNumber = getPointNumber(targetIndex);
-
-                        bestMove = {
-                            type: 'normal',
-                            from: i,
-                            to: targetIndex,
-                            die: die,
-                            description: `Die ${die}: Move from point ${fromPointNumber} to point ${toPointNumber} ${moveContext}`
-                        };
-                    }
-                }
-            });
-            return bestMove;
-        }
-
-        // For each die, find and simulate moves in sequence
-        for (let die of dice) {
-            if (usedDice.has(die) && dice[0] !== dice[1]) continue;
-            
-            const move = findSingleMove(currentBoard, die);
-            if (move) {
-                moves.push(move);
-                usedDice.add(die);
-                // Simulate the move to update board state for next move
-                currentBoard = simulateMove(currentBoard, move, player);
-            }
-        }
-
-        return moves;
+        });
+        
+        return sequence;
     }
 
     function suggestMoves(board, dice) {
         const player = board.currentPlayer;
-        const analysis = analyzeBoardPosition(board, player);
-        const pipCountInfo = `Current pip count - ${player}: ${analysis.pipCount}, opponent: ${analysis.opponentPipCount}`;
-
-        // Find all possible move sequences
+        
+        // Get pip counts directly from the main display
+        const whitePips = parseInt(document.getElementById('whitePips').textContent);
+        const blackPips = parseInt(document.getElementById('blackPips').textContent);
+        
+        // Format header with player and dice info
+        let output = `${player.toUpperCase()} to play ${dice[0]},${dice[1]}\n`;
+        output += '----------------------------------------\n\n';
+        
+        // Add pip count information using the values from main display
+        output += `Current pip counts:\n`;
+        output += `White: ${whitePips}\n`;
+        output += `Black: ${blackPips}\n\n`;
+        
+        // Find all possible move sequences using the same logic as the main board
         const moveSequence = findMovesSequence(board, player, dice);
         
+        // Store the move sequence for execution
+        board.bestMoveSequence = moveSequence;
+        
         if (moveSequence.length === 0) {
-            return {
-                pipCounts: pipCountInfo,
-                aggressiveStrategy: {
-                    description: "No legal moves available",
-                    moves: []
-                },
-                conservativeStrategy: {
-                    description: "No legal moves available",
-                    moves: []
-                }
-            };
+            output += 'No legal moves available';
+            return output;
         }
 
-        // Convert moves to proper format and calculate pip reductions
-        const moves = moveSequence.map(move => ({
-            type: move.type,
-            from: move.type === 'normal' ? move.from : 'bar',
-            to: move.to
-        }));
+        // Generate move description
+        output += 'Suggested moves:\n';
+        moveSequence.forEach((move, index) => {
+            output += `${index + 1}. ${move.description}\n`;
+        });
 
-        const description = moveSequence.map(move => move.description).join('\n');
-        const totalPipReduction = moves.reduce((total, move) => 
-            total + estimatePipReduction(move, player), 0);
-
-        return {
-            pipCounts: pipCountInfo,
-            aggressiveStrategy: {
-                description: description,
-                moves: moves
-            },
-            conservativeStrategy: {
-                description: description,
-                moves: moves
-            }
-        };
+        return output;
     }
 
     // Update the getBestMove method to use the new suggestion system
     board.getBestMove = function(dice) {
         return suggestMoves(this, dice);
     };
+
+    function isLegalMove(boardState, from, to, player) {
+        // If moving from bar, only check target point
+        if (from === 'bar') {
+            if (to < 0 || to >= 24) return false;
+            return !boardState.points[to].color || 
+                   boardState.points[to].color === player || 
+                   boardState.points[to].pieces.length === 1;
+        }
+
+        // Check basic bounds
+        if (from < 0 || from >= 24 || to < 0 || to >= 24) return false;
+
+        // Verify piece exists and belongs to current player
+        if (!boardState.points[from] || 
+            boardState.points[from].color !== player || 
+            boardState.points[from].pieces.length === 0) {
+            return false;
+        }
+
+        // Check if target point is available
+        return !boardState.points[to].color || 
+               boardState.points[to].color === player || 
+               boardState.points[to].pieces.length === 1;
+    }
+
+    function getMoveContext(targetIndex, player) {
+        if (player === 'white' && targetIndex <= 5) return " into home board";
+        if (player === 'white' && targetIndex <= 11) return " into outer board";
+        if (player === 'black' && targetIndex >= 18) return " into home board";
+        if (player === 'black' && targetIndex >= 12) return " into outer board";
+        return "";
+    }
 }); 

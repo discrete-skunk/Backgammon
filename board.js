@@ -252,6 +252,19 @@ class BackgammonBoard {
             const isOnBar = x >= centerX - barWidth/2 && x <= centerX + barWidth/2;
             const targetPoint = this.getPointFromCoordinates(x, y);
             
+            // Check if target point has more than one opponent piece
+            const hasMultipleOpponentPieces = targetPoint !== -1 && 
+                this.points[targetPoint].color !== this.selectedPiece.color && 
+                this.points[targetPoint].pieces.length > 1;
+
+            if (hasMultipleOpponentPieces) {
+                // Invalid move - return piece to original position
+                this.isDragging = false;
+                this.selectedPiece = null;
+                this.draw();
+                return;
+            }
+
             if (isOnBar && !this.selectedPiece.isOnBar) {
                 // Dropping piece onto the bar
                 this.points[this.selectedPiece.pointIndex].pieces.pop();
