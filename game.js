@@ -497,10 +497,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function findSingleMove(boardState, die) {
         // Check bar first
         if (boardState.bar[board.currentPlayer].length > 0) {
-            const targetPoint = board.currentPlayer === 'white' ? 25 - die : die;
-            const targetIndex = board.getTargetPoint(targetPoint, die);
-            
-            if (isLegalMove(boardState, 'bar', targetIndex, board.currentPlayer)) {
+            let targetPoint;
+            if (board.currentPlayer === 'white') {
+                // For white, entering from bar is like moving from point 25
+                targetPoint = 24 - die;  // die 1 goes to point 24, die 2 to point 23, etc.
+            } else {
+                // For black, entering from bar is like moving from point 0
+                targetPoint = die;  // die 1 goes to point 1, die 2 to point 2, etc.
+            }
+
+            // Convert target point number to index
+            let targetIndex = -1;
+            for (let i = 0; i < 24; i++) {
+                if (parseInt(board.pointNames(i).split(' ')[1]) === targetPoint) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+
+            if (targetIndex >= 0 && targetIndex <= 23 &&
+                isLegalMove(boardState, 'bar', targetIndex, board.currentPlayer)) {
                 return {
                     type: 'bar',
                     to: targetIndex,
