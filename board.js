@@ -12,10 +12,55 @@ class BackgammonBoard {
         // Initialize starting position
         this.initializeBoard();
         
-        // Add event listeners for canvas
+        // Mouse event listeners
         this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
         this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
         this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+
+        // Touch event listeners
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = this.canvas.width / rect.width;
+            const scaleY = this.canvas.height / rect.height;
+            
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: (touch.clientX - rect.left) * scaleX,
+                clientY: (touch.clientY - rect.top) * scaleY
+            });
+            this.handleMouseDown(mouseEvent);
+        });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = this.canvas.width / rect.width;
+            const scaleY = this.canvas.height / rect.height;
+            
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: (touch.clientX - rect.left) * scaleX,
+                clientY: (touch.clientY - rect.top) * scaleY
+            });
+            this.handleMouseMove(mouseEvent);
+        });
+
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (e.changedTouches.length > 0) {
+                const touch = e.changedTouches[0];
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                
+                const mouseEvent = new MouseEvent('mouseup', {
+                    clientX: (touch.clientX - rect.left) * scaleX,
+                    clientY: (touch.clientY - rect.top) * scaleY
+                });
+                this.handleMouseUp(mouseEvent);
+            }
+        });
 
         // Initial pip count
         this.updatePipCounts();
